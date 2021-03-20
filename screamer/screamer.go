@@ -724,6 +724,36 @@ func (d *Screamer) Close() error {
 	return nil
 }
 
+func (d *Screamer) setConfigSpaceTlpsFilter(flag bool) error {
+	// Set bit number 204 (25 bytes + 4 bits) in 'pcileech_fifo.sv'.
+	// Taken from https://github.com/ufrisk/LeechCore/wiki/LeechCore_API_Python.
+	baseAddr := 25
+	flags := configFlagCore | configFlagReadWrite
+	data := []byte{0, 0}
+	mask := []byte{0x10, 0}
+	if flag {
+		data[0] = 0x10
+	}
+	req, err := buildConfigWriteRequests(baseAddr, flags, data, mask)
+	if err != nil {
+		return err
+	}
+	if n, err := d.dataWrite(req); err != nil || n != len(req) {
+		return fmt.Errorf("d.dataWrite(%X) = %v, %v, want n=%d and nil error", req, n, err, len(req))
+	}
+	return nil
+}
+
+// Disables filtering of TLPs addressing configuration space.
+func (d *Screamer) ReceiveConfigSpaceTlps() error {
+	return d.setConfigSpaceTlpsFilter(false)
+}
+
+// Enables filtering of TLPs addressing configuration space.
+func (d *Screamer) FilterConfigSpaceTlps() error {
+	return d.setConfigSpaceTlpsFilter(true)
+}
+
 // buildWriteTLPCommand builds a TLP write command.
 // |tlp| must be dword aligned, and contain at least one dword.
 // Based on DeviceFPGA_TxTlp().
