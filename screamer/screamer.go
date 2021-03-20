@@ -580,13 +580,17 @@ func (d *Screamer) configRead(baseAddr int, flags configFlags, data []byte) (int
 
 // buildConfigWriteRequests builds a list of requests that write |data|
 // bytes to FPGA configuration registers starting at |baseAddr|.
-func buildConfigWriteRequests(baseAddr int, flags configFlags, data []byte) ([]byte, error) {
+func buildConfigWriteRequests(baseAddr int, flags configFlags, data, mask []byte) ([]byte, error) {
 	type writeRequest struct {
 		Data    [2]uint8
 		Mask    [2]uint8
 		Address uint16 // In BigEndian.
 		Target  uint8
 		Magic   uint8
+	}
+
+	if len(data) != len(mask) {
+		return nil, fmt.Errorf("len(mask) != len(data), want %d got %d", len(data), len(mask))
 	}
 
 	// Write data to baseAddr in chunks of 2 bytes. This is the granularity
@@ -603,10 +607,10 @@ func buildConfigWriteRequests(baseAddr int, flags configFlags, data []byte) ([]b
 		}
 
 		req.Data[0] = uint8(data[i])
-		req.Mask[0] = 0xff
+		req.Mask[0] = uint8(mask[i])
 		if i+1 < len(data) {
 			req.Data[1] = uint8(data[i+1])
-			req.Mask[1] = 0xff
+			req.Mask[1] = uint8(mask[i+1])
 		}
 
 		if err := binary.Write(buf, be, req); err != nil {
@@ -626,7 +630,12 @@ func (d *Screamer) configWrite(baseAddr int, flags configFlags, data []byte) (in
 		return 0, fmt.Errorf("invalid data length, got %d, want <= maxConfigWriteSize (%d)", len(data), maxConfigWriteSize)
 	}
 
-	req, err := buildConfigWriteRequests(baseAddr, flags, data)
+	mask := make([]byte, len(data))
+	for i := 0; i < len(mask); i++ {
+		mask[i] = 0xff
+	}
+
+	req, err := buildConfigWriteRequests(baseAddr, flags, data, mask)
 	if err != nil {
 		return 0, err
 	}

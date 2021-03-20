@@ -452,57 +452,65 @@ func TestBuildConfigWriteRequests(t *testing.T) {
 		baseAddr int
 		flags    configFlags
 		data     []byte
+		mask     []byte
 		want     []byte
 	}{
 		{desc: "Zero data length",
 			baseAddr: 0,
 			flags:    0,
 			data:     []byte{},
+			mask:     []byte{},
 			want:     []byte{},
 		},
 		{desc: "Single data byte ro register",
 			baseAddr: 0x120,
 			flags:    configFlagReadOnly,
 			data:     []byte{1},
+			mask:     []byte{0xff},
 			want:     []byte{0x01, 0x00, 0xff, 0x00, 0x01, 0x20, 0x20, 0x77},
 		},
 		{desc: "Two data bytes ro register",
 			baseAddr: 0x120,
 			flags:    configFlagReadOnly,
 			data:     []byte{1, 2},
+			mask:     []byte{0xff, 0xff},
 			want:     []byte{0x01, 0x02, 0xff, 0xff, 0x01, 0x20, 0x20, 0x77},
 		},
 		{desc: "Three data bytes ro register",
 			baseAddr: 0x120,
 			flags:    configFlagReadOnly,
 			data:     []byte{1, 2, 3},
+			mask:     []byte{0xff, 0xff, 0xff},
 			want:     []byte{0x01, 0x02, 0xff, 0xff, 0x01, 0x20, 0x20, 0x77, 0x03, 0x00, 0xff, 0x00, 0x01, 0x22, 0x20, 0x77},
 		},
 		{desc: "Single data byte rw register",
 			baseAddr: 0x120,
 			flags:    configFlagReadWrite,
 			data:     []byte{1},
+			mask:     []byte{0xff},
 			want:     []byte{0x01, 0x00, 0xff, 0x00, 0x81, 0x20, 0x20, 0x77},
 		},
 		{desc: "Two data bytes rw register",
 			baseAddr: 0x120,
 			flags:    configFlagReadWrite,
 			data:     []byte{1, 2},
+			mask:     []byte{0xff, 0xff},
 			want:     []byte{0x01, 0x02, 0xff, 0xff, 0x81, 0x20, 0x20, 0x77},
 		},
 		{desc: "Three data bytes rw register",
 			baseAddr: 0x120,
 			flags:    configFlagReadWrite,
 			data:     []byte{1, 2, 3},
+			mask:     []byte{0xff, 0xff, 0xff},
 			want:     []byte{0x01, 0x02, 0xff, 0xff, 0x81, 0x20, 0x20, 0x77, 0x03, 0x00, 0xff, 0x00, 0x81, 0x22, 0x20, 0x77},
 		},
 	}
 
 	for _, test := range tests {
 		t.Logf("Start case: %s", test.desc)
-		got, err := buildConfigWriteRequests(test.baseAddr, test.flags, test.data)
+		got, err := buildConfigWriteRequests(test.baseAddr, test.flags, test.data, test.mask)
 		if err != nil {
-			t.Errorf("buildConfigWriteRequests(%X, %X, % X) = _, %v, want nil error", test.baseAddr, test.flags, test.data, err)
+			t.Errorf("buildConfigWriteRequests(%X, %X, % X, % X) = _, %v, want nil error", test.baseAddr, test.flags, test.data, test.mask, err)
 		}
 		if diff := cmp.Diff(test.want, got, cmpopts.EquateEmpty()); diff != "" {
 			t.Errorf("buildConfigWriteRequests() diff -want +got\n%s", diff)
