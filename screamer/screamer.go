@@ -180,7 +180,7 @@ func max(x, y int) int {
 }
 
 func (ver *fpgaVersion) isSupported() bool {
-	return ver.VersionMajor == screamerFPGAVersion && ver.FPGAID == screamerFPGAID
+	return ver.VersionMajor == screamerFPGAVersion && ver.FPGAID >= screamerFPGAID
 }
 
 const (

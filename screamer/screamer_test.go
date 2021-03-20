@@ -528,7 +528,7 @@ func TestFPGAVersionIsSupport(t *testing.T) {
 		{ver: fpgaVersion{VersionMajor: 3, VersionMinor: 0, FPGAID: 3}, supported: false},
 		{ver: fpgaVersion{VersionMajor: 4, VersionMinor: 0, FPGAID: 3}, supported: true},
 		{ver: fpgaVersion{VersionMajor: 5, VersionMinor: 0, FPGAID: 3}, supported: false},
-		{ver: fpgaVersion{VersionMajor: 4, VersionMinor: 0, FPGAID: 4}, supported: false},
+		{ver: fpgaVersion{VersionMajor: 4, VersionMinor: 0, FPGAID: 4}, supported: true},
 	}
 	for _, test := range tests {
 		if test.ver.isSupported() != test.supported {
