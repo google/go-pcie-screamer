@@ -646,7 +646,7 @@ func TestParseTLPReadResponse(t *testing.T) {
 	for _, test := range tests {
 		t.Logf("Start case: %s", test.desc)
 
-		got, err := parseTLPReadResponse(test.res)
+		got, err := parseTLPReadResponse(bytes.NewReader(test.res))
 		if err != nil {
 			t.Errorf("parseTLPReadResponse(%X, _) = %v, want nil error", test.res, err)
 		}
