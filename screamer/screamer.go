@@ -797,16 +797,22 @@ func (d *Screamer) writeTLP(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// parseTLPReadResponse decodes and extracts a single TLP buffer from a TLP
-// read response buffer.
+// TLPController sends and receives TLP packets.
+// Implements io.ReadWriter.
+type TLPController struct {
+	d          *Screamer
+	readBuffer *bytes.Buffer
+	partialTlp *bytes.Buffer
+	tlpQueue   []*bytes.Buffer
+}
+
+// Extracts TLB buffers from the response buffer.
 // Based on DeviceFPGA_RxTlpSynchronous().
-func parseTLPReadResponse(res *bytes.Reader) ([]byte, error) {
+func (c *TLPController) decodeResponseBuffer() error {
 	var d dataBlock
-	buf := new(bytes.Buffer)
-	var done bool
-	for res.Len() >= binary.Size(d) && !done {
-		if err := binary.Read(res, le, &d); err != nil {
-			return nil, fmt.Errorf("binary.Read(r, le, &d) = %v, want nil error", err)
+	for c.readBuffer.Len() >= binary.Size(d) {
+		if err := binary.Read(bytes.NewReader(c.readBuffer.Next(binary.Size(d))), le, &d); err != nil {
+			return fmt.Errorf("binary.Read(r, le, &d) = %v, want nil error", err)
 		}
 		if (d.Status & statusPropertiesMask) != statusWithDataBlocks {
 			continue
@@ -817,49 +823,55 @@ func parseTLPReadResponse(res *bytes.Reader) ([]byte, error) {
 		for j := 0; j < len(d.Data); j, d.Status = j+1, d.Status>>4 {
 			if (int(d.Status) & int(configFlagCore)) == 0x00 {
 				// PCIe TLP. Append data to result.
-				buf.Write(d.Data[j][:])
+				c.partialTlp.Write(d.Data[j][:])
 			}
 			if (int(d.Status) & readTLPLastMask) == readTLPPCIeAndLastData {
-				done = true
-				break
+				c.tlpQueue = append(c.tlpQueue, c.partialTlp)
+				c.partialTlp = new(bytes.Buffer)
 			}
 		}
 	}
-	return buf.Bytes(), nil
-}
-
-// TLPController sends and receives TLP packets.
-// Implements io.ReadWriter.
-type TLPController struct {
-	d          *Screamer
-	readBuffer [maxReceiveSize]byte
-	resReader  *bytes.Reader
+	return nil
 }
 
 // Read synchronously reads a TLP buffer.
 // Based on DeviceFPGA_RxTlpSynchronous().
 func (c *TLPController) Read(p []byte) (int, error) {
-	if c.resReader == nil || c.resReader.Len() == 0 {
+	if len(c.tlpQueue) == 0 {
 		// Read encoded TLP buffer.
-		n, err := c.d.dataRead(c.readBuffer[:])
+		res := make([]byte, maxReceiveSize)
+		n, err := c.d.dataRead(res)
 		if err != nil {
 			return 0, fmt.Errorf("d.dataRead(res) = _, %v, want nil error", err)
 		}
 		if n == 0 {
 			return n, nil
 		}
-		c.resReader = bytes.NewReader(c.readBuffer[:n])
+
+		glog.V(1).Infof("[TLP-RX]: received %d bytes. data:[:%d]\n%s", n, min(n, 128), hex.Dump(res[:min(n, 128)]))
+
+		// Append to unprocessed buffer.
+		c.readBuffer.Write(res[:n])
+
+		if err = c.decodeResponseBuffer(); err != nil {
+			return 0, fmt.Errorf("failed to decode response buffer: %v", err)
+		}
 	}
-	// Decode and extract a single TLP buffer.
-	tlp, err := parseTLPReadResponse(c.resReader)
-	if err != nil {
-		c.resReader = nil
-		return 0, fmt.Errorf("parseTLPReadResponse() = _, %v, want nil error", err)
+
+	if len(c.tlpQueue) == 0 {
+		return 0, nil
 	}
+
+	glog.V(1).Infof("TLPs in RX queue: %d", len(c.tlpQueue))
+
 	// Copy TLP to result buffer.
+	tlp := c.tlpQueue[0].Bytes()
+	c.tlpQueue[0] = nil
+	c.tlpQueue = c.tlpQueue[1:]
+
 	n := min(len(p), len(tlp))
 	copy(p, tlp[:n])
-	glog.V(1).Infof("[TLP-RX]: received %d bytes. data:[:%d]\n%s", n, min(n, 32), hex.Dump(p[:min(n, 32)]))
+	glog.V(1).Infof("[TLP-RX]: returning %d bytes. TLP data:[:%d]\n%s", n, min(n, 32), hex.Dump(p[:min(n, 32)]))
 	return n, nil
 }
 
@@ -871,7 +883,7 @@ func (c *TLPController) Write(p []byte) (int, error) {
 // and receive TLP packets.
 // Caller should not use TLPController after calling d.Close().
 func NewTLPController(d *Screamer) *TLPController {
-	return &TLPController{d: d, resReader: nil}
+	return &TLPController{d: d, readBuffer: new(bytes.Buffer), partialTlp: new(bytes.Buffer)}
 }
 
 // OpenScreamers enumerates and opens all PCIe screamer devices on the system.
